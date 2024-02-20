@@ -15,5 +15,6 @@
 		"app",
 	],
 	"workspaceFolder": "/workspace/labelstudio",
+  "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
   "remoteUser": "root"
 }
