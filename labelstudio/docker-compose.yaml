@@ -16,12 +16,6 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-    # command: /bin/sh -c "while sleep 1000; do :; done"
 networks:
   app-network:
     external: true
-
-
-
-
-

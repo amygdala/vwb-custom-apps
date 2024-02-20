@@ -10,11 +10,7 @@
   // use. Update this value and .devcontainer/docker-compose.yml to the real service name.
   "service": "app",
   "shutdownAction": "none",
-  // "runServices": [
-  //   "db",
-  //   "app",
-  // ],
   "workspaceFolder": "/workspace/labelstudio",
-  "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
+  // "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
   "remoteUser": "root"
 }
