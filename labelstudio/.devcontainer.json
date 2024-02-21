@@ -1,16 +1,22 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.166.1/containers/docker-existing-docker-compose
-// If you want to run as a non-root user in the container, see .devcontainer/docker-compose.yml.
 {
-  "name": "label studio test",
-  // Update the 'dockerComposeFile' list if you have more compose files or use different names.
-  // The .devcontainer/docker-compose.yml file contains any overrides you need/want to make.
-  "dockerComposeFile": "docker-compose.yaml",
-  // The 'service' property is the name of the service for the container that VS Code should
-  // use. Update this value and .devcontainer/docker-compose.yml to the real service name.
+  "name": "label studio",
+  "image": "heartexlabs/label-studio:latest",
+  "build": {
+    "context": ".."
+  },
   "service": "app",
   "shutdownAction": "none",
-  "workspaceFolder": "/workspace/labelstudio",
-  // "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
+  "appPort": [
+    "8080:8080"
+  ],
+  "runArgs": [
+    "--name=application-server",
+    "--network=app-network"
+  ],
+  "containerEnv": {
+    "LABEL_STUDIO_USERNAME": "labelstudio@localhost",
+    "LABEL_STUDIO_PASSWORD": "pwd"
+  },
+  "overrideCommand": false,
   "remoteUser": "root"
 }
