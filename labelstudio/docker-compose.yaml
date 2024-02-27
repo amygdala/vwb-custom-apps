@@ -17,12 +17,9 @@ services:
     security_opt:
       - apparmor:unconfined
   model_server:
-    build: .
     image: gcr.io/terra-vdevel-cutting-date-7064/ls_ml:v1
     environment:
       - MODEL_DIR=/data/models
-      - LABEL_STUDIO_HOST=
-      - LABEL_STUDIO_API_KEY=
     restart: always
     volumes:
       - ..:/workspace:cached
