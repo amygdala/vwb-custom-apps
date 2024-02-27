@@ -16,6 +16,26 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
+  model_server:
+    build: .
+    image: gcr.io/terra-vdevel-cutting-date-7064/ls_ml:v1
+    environment:
+      - MODEL_DIR=/data/models
+      - LABEL_STUDIO_HOST=
+      - LABEL_STUDIO_API_KEY=
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+    ports:
+      - 9090:9090
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 networks:
   app-network:
     external: true
