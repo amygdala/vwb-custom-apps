@@ -2,7 +2,12 @@ version: '2.4'
 services:
   app:
     container_name: "application-server"
+    hostname: app
     image: "heartexlabs/label-studio:latest"
+    environment:
+      - LABEL_STUDIO_USERNAME=default@example.com
+      - LABEL_STUDIO_PASSWORD=12345
+      - LABEL_STUDIO_USER_TOKEN=b475694381f81200724794431a491fb12c6c6359
     restart: always
     volumes:
       - ..:/workspace:cached
@@ -16,17 +21,44 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-  model_server:
-    image: gcr.io/terra-vdevel-cutting-date-7064/ls_ml:v1
+  model-server:
+    container_name: model-server
+    image: gcr.io/terra-vdevel-cutting-date-7064/pytorch_xfer:v1
     environment:
       - MODEL_DIR=/data/models
+      - RQ_QUEUE_NAME=default
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - HOSTNAME=http://app:8080
+      - API_KEY=b475694381f81200724794431a491fb12c6c6359
     restart: always
     volumes:
       - ..:/workspace:cached
     ports:
       - 9090:9090
+    depends_on:
+      - redis
+    links:
+      - redis
     networks:
       - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+  redis:
+    image: redis:alpine
+    container_name: redis
+    hostname: redis
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+    networks:
+      - app-network
+    expose:
+      - 6379
     cap_add:
       - SYS_ADMIN
     devices:
