@@ -1,0 +1,25 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    hostname: app
+    image: "heartexlabs/label-studio:latest"
+    environment:
+      - LABEL_STUDIO_USERNAME=default@example.com
+      - LABEL_STUDIO_PASSWORD=12345
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+    ports:
+      - '8080:8080'
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
