@@ -23,7 +23,7 @@ services:
       - apparmor:unconfined
   model-server:
     container_name: model-server
-    image: gcr.io/terra-vdevel-cutting-date-7064/pytorch_xfer:v1
+    image: gcr.io/terra-vdevel-cutting-date-7064/pytorch_xfer:v2
     environment:
       - MODEL_DIR=/data/models
       - RQ_QUEUE_NAME=default
