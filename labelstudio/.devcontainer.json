@@ -9,8 +9,8 @@
   // The 'service' property is the name of the service for the container that VS Code should
   // use. Update this value and .devcontainer/docker-compose.yml to the real service name.
   "service": "app",
+  "workspaceFolder": "/workspace",
   "shutdownAction": "none",
-  "workspaceFolder": "/workspace/labelstudio",
   // "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
   "remoteUser": "root"
 }

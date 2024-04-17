@@ -11,6 +11,7 @@ services:
     restart: always
     volumes:
       - ..:/workspace:cached
+      - work:/home/labelstudio:cached
     ports:
       - '8080:8080'
     networks:
@@ -68,3 +69,5 @@ services:
 networks:
   app-network:
     external: true
+volumes:
+  work:
