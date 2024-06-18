@@ -8,6 +8,8 @@ services:
       - "3001:3001"
     cap_add:
       - SYS_ADMIN
+    networks:
+      - app-network
     devices:
       - /dev/fuse
     security_opt:
