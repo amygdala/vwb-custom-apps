@@ -14,3 +14,14 @@
   // "postCreateCommand": ["../startupscript/post-startup.sh", "labelstudio", "/home/labelstudio", "gcp", "true"],
   "remoteUser": "root"
 }
+{
+  "name": "anythingllm_test",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": ["./startupscript/post-startup.sh", "anythingllm", "/app", "${templateOption:cloud}", "${templateOption:login}"],
+  // re-mount bucket files on container start up
+  "postStartCommand":["./startupscript/remount-on-restart.sh", "anythingllm", "/app", "${templateOption:cloud}", "${templateOption:login}"],
+  "remoteUser": "root"
+}

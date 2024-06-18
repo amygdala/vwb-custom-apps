@@ -5,11 +5,9 @@ services:
     hostname: app
     image: "mintplexlabs/anythingllm:latest"
     ports:
-      - "3001:3001"
+      - '3001:3001'
     cap_add:
       - SYS_ADMIN
-    networks:
-      - app-network
     devices:
       - /dev/fuse
     security_opt:
@@ -17,10 +15,10 @@ services:
     restart: always
     environment:
     # Adjust for your environemnt
-      - STORAGE_DIR=/app/server/storage
+      - STORAGE_DIR=/workspace
     volumes:
-      - ..:/workspace:cached
-      - work:/app/server/storage:cached
-    restart: always
-
-
+      - .:/workspace:cached
+      - work:/app:cached
+networks:
+  app-network:
+    external: true
