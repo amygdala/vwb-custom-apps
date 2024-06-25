@@ -15,10 +15,11 @@ services:
     restart: always
     environment:
     # Adjust for your environemnt
-      - STORAGE_DIR=/app/server/storage
+      # - STORAGE_DIR=/app/server/storage
+      - STORAGE_DIR=/workspace/server/storage
     volumes:
       - .:/workspace:cached
-      - work:/app/server/storage:cached
+      # - work:/app/server/storage:cached
 networks:
   app-network:
     external: true
