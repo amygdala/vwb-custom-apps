@@ -176,10 +176,45 @@ readonly -f emit
 #######################################
 function get_metadata_value() {
   curl --retry 5 -s -f \
-    -H "Metadata-Flavor: Google" \
-    "http://metadata/computeMetadata/v1/$1"
+      -H "Metadata-Flavor: Google" \
+      "http://metadata/computeMetadata/v1/$1" \
+    || echo -n
 }
+readonly -f get_metadata_value
 
+#######################################
+# function to retry command
+#######################################
+function retry () {
+  local max_attempts="$1"
+  local command="$2"
+
+  local attempt
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Run the command and return if success
+    if ${command}; then
+      return
+    fi
+
+    # Sleep a bit in case the problem is a transient network/server issue
+    if ((attempt < max_attempts)); then
+      echo "Retrying $(command) in 5 seconds"
+      sleep 5
+    fi
+  done
+
+  # Execute without the if/then protection such that the exit code propagates
+  ${command}
+}
+readonly -f retry
+
+#################################
+# Download and install Nextflow
+#################################
+function install_nextflow() {
+  ${RUN_AS_LOGIN_USER} "curl -s https://get.nextflow.io | bash"
+}
+readonly -f install_nextflow
 #######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
 # See https://cloud.google.com/compute/docs/metadata/manage-guest-attributes
@@ -194,6 +229,7 @@ function set_guest_attributes() {
     -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${attr_path}"
 }
+readonly -f set_guest_attributes
 
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
@@ -211,6 +247,7 @@ function exit_handler {
   set_guest_attributes "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
   exit "${exit_code}"
 }
+readonly -f exit_handler
 trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 
 #######################################
@@ -222,7 +259,8 @@ set_guest_attributes "${STATUS_ATTRIBUTE}" "STARTED"
 
 emit "Determining JupyterLab environment (jupyter.service or docker)"
 
-readonly INSTANCE_CONTAINER="$(get_metadata_value "instance/attributes/container")"
+INSTANCE_CONTAINER="$(get_metadata_value "instance/attributes/container")"
+readonly INSTANCE_CONTAINER
 if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   emit "Custom container for JupyterLab detected: ${INSTANCE_CONTAINER}."
   # When JupyterLab is provided by a Docker container, the default Deep Learning images
@@ -238,6 +276,12 @@ fi
 readonly NOTEBOOK_CONFIG
 emit "Resynchronizing apt package index..."
 
+# TODO (BENCH-2316): Update apt to point to the new k8s pkg. https://kubernetes.io/blog/2023/08/15/pkgs-k8s-io-introduction/
+# Remove this when deep learning image fix this issue.
+mkdir /etc/apt/keyrings
+chmod 755 /etc/apt/keyrings
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 # The apt package index may not be clean when we run; resynchronize
 apt-get update --allow-releaseinfo-change
 
@@ -277,6 +321,9 @@ EOF
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
 ### BEGIN: Workbench-specific customizations ###
+
+# Allow users to toggle display of hidden files in file browser
+c.ContentsManager.allow_hidden = True
 
 EOF
 
@@ -361,11 +408,10 @@ if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   chown ${LOGIN_USER}:${LOGIN_USER} "${USER_HOME_LOCAL_BIN}/less"
 fi
 
-# Download Nextflow and install it
 emit "Installing Nextflow ..."
 
+retry 5 install_nextflow
 ${RUN_AS_LOGIN_USER} "\
-  curl -s https://get.nextflow.io | bash && \
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"
 
 # Download Cromwell and install it
@@ -409,7 +455,7 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
     >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi
-  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
   cp wb "${WORKBENCH_INSTALL_PATH}"
@@ -439,7 +485,8 @@ ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/work
 ####################################
 
 # Set the CLI workspace id using the VM metadata, if set.
-readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+readonly TERRA_WORKSPACE
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
   ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
@@ -460,20 +507,23 @@ fi
 # (https://github.com/DataBiosphere/leonardo)
 
 # OWNER_EMAIL is really the Workbench user account email address
-readonly OWNER_EMAIL="$(
+OWNER_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
+readonly OWNER_EMAIL
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
-readonly GOOGLE_PROJECT="$(
+GOOGLE_PROJECT="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
+readonly GOOGLE_PROJECT
 
 # PET_SA_EMAIL is the pet service account for the Workbench user and
 # is specific to the GCP project backing the workspace
-readonly PET_SA_EMAIL="$(
+PET_SA_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
+readonly PET_SA_EMAIL
 
 # These are equivalent environment variables which are set for a
 # command when calling "wb app execute <command>".
@@ -759,7 +809,8 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 # If the user has provided a startup script, run it after workbench setup but
 # before restarting Jupyter and running tests.
 
-readonly USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-user-startup-script")"
+USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-user-startup-script")"
+readonly USER_STARTUP_SCRIPT
 if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
   readonly USER_STARTUP_SCRIPT_FILE="${USER_WORKBENCH_CONFIG_DIR}/user-startup-script.sh"
 
@@ -779,19 +830,33 @@ if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
   "${USER_STARTUP_SCRIPT_FILE}" > ${USER_STARTUP_OUTPUT_FILE} 2>&1
 fi
 
-######################################
-# Restart proxy to pick up the new env
-######################################
-readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
-if [[ -n "${APP_PROXY}" ]]; then
-  emit "Using custom Proxy Agent"
-  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
-  NEW_PROXY="https://${APP_PROXY}"
-  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+# TODO(BENCH-2612): use workbench CLI instead to get user profile.
+IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+                  | jq '.value')"
+readonly IS_NON_GOOGLE_ACCOUNT
 
-  # Create a systemd service to start the workbench app proxy.
-  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+
+###########################################################
+# Start a Proxy Agent to talk to workbench proxy service
+###########################################################
+
+  APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
+  readonly APP_PROXY
+  TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
+  readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME
+  if [[ -n "${APP_PROXY}" ]]; then
+    emit "Using custom Proxy Agent"
+    RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+    NEW_PROXY="https://${APP_PROXY}"
+    NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+    readonly RESOURCE_ID
+    readonly NEW_PROXY
+    readonly NEW_PROXY_URL
+
+    # Create a systemd service to start the workbench app proxy.
+    cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench App Proxy Agent Service
 StartLimitIntervalSec=600
@@ -805,21 +870,22 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-  # Enable and start the startup service
-  systemctl daemon-reload
-  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  emit "Workbench proxy Agent service started"
+    # Enable and start the startup service
+    systemctl daemon-reload
+    systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    emit "Workbench Proxy Agent service started"
   
-  # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
-  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
-  emit "Updating app-proxy-url metadata"
+    # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
+    ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
+    emit "Updating app-proxy-url metadata"
 
-  cat << EOF >> "${NOTEBOOK_CONFIG}"
+    cat << EOF >> "${NOTEBOOK_CONFIG}"
 
 c.ServerApp.allow_origin_pat += "|(^https://${NEW_PROXY_URL}$)"
 
 EOF
+  fi
 fi
 
 # Indicate the end of Workbench customizations of the jupyter_notebook_config.py
@@ -847,7 +913,8 @@ fi
 emit "--  Checking if installed Java version is ${REQ_JAVA_VERSION} or higher"
 
 # Get the current major version of Java: "11.0.12" => "11"
-readonly INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
+INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
+readonly INSTALLED_JAVA_VERSION
 if [[ "${INSTALLED_JAVA_VERSION}" -lt ${REQ_JAVA_VERSION} ]]; then
   >&2 emit "ERROR: Java version detected (${INSTALLED_JAVA_VERSION}) is less than required (${REQ_JAVA_VERSION})"
   exit 1
@@ -858,14 +925,16 @@ emit "SUCCESS: Java installed and version detected as ${INSTALLED_JAVA_VERSION}"
 # Test nextflow
 emit "--  Checking if Nextflow is properly installed"
 
-readonly INSTALLED_NEXTFLOW_VERSION="$(${RUN_AS_LOGIN_USER} "${NEXTFLOW_INSTALL_PATH} -v" | sed -e 's#nextflow version \(.*\)#\1#')"
+INSTALLED_NEXTFLOW_VERSION="$(${RUN_AS_LOGIN_USER} "${NEXTFLOW_INSTALL_PATH} -v" | sed -e 's#nextflow version \(.*\)#\1#')"
+readonly INSTALLED_NEXTFLOW_VERSION
 
 emit "SUCCESS: Nextflow installed and version detected as ${INSTALLED_NEXTFLOW_VERSION}"
 
 # Test Cromwell
 emit "--  Checking if installed Cromwell version is ${CROMWELL_LATEST_VERSION}"
 
-readonly INSTALLED_CROMWELL_VERSION="$(${RUN_AS_LOGIN_USER} "java -jar ${CROMWELL_INSTALL_JAR} --version" | sed -e 's#cromwell \(.*\)#\1#')"
+INSTALLED_CROMWELL_VERSION="$(${RUN_AS_LOGIN_USER} "java -jar ${CROMWELL_INSTALL_JAR} --version" | sed -e 's#cromwell \(.*\)#\1#')"
+readonly INSTALLED_CROMWELL_VERSION
 if [[ "${INSTALLED_CROMWELL_VERSION}" -ne ${CROMWELL_LATEST_VERSION} ]]; then
   >&2 emit "ERROR: Cromwell version detected (${INSTALLED_CROMWELL_VERSION}) is not equal to expected (${CROMWELL_LATEST_VERSION})"
   exit 1
@@ -895,7 +964,8 @@ if [[ ! -e "${WORKBENCH_INSTALL_PATH}" ]]; then
   exit 1
 fi
 
-readonly INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
+INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
+readonly INSTALLED_WORKBENCH_VERSION
 
 if [[ -z "${INSTALLED_WORKBENCH_VERSION}" ]]; then
   >&2 emit "ERROR: Workbench CLI did not execute or did not return a version number"
@@ -911,7 +981,8 @@ if [[ ! -e "${USER_SSH_DIR}" ]]; then
   >&2 emit "ERROR: user SSH directory does not exist"
   exit 1
 fi
-readonly SSH_DIR_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}")"
+SSH_DIR_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}")"
+readonly SSH_DIR_MODE
 if [[ "${SSH_DIR_MODE}" != "700 jupyter jupyter" ]]; then
   >&2 emit "ERROR: user SSH directory permissions are incorrect: ${SSH_DIR_MODE}"
   exit 1
@@ -920,7 +991,8 @@ fi
 # If the user didn't have an SSH key configured, then the id_rsa file won't exist.
 # If they do have the file, check the permissions
 if [[ -e "${USER_SSH_DIR}/id_rsa" ]]; then
-  readonly SSH_KEY_FILE_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}/id_rsa")"
+  SSH_KEY_FILE_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}/id_rsa")"
+  readonly SSH_KEY_FILE_MODE
   if [[ "${SSH_KEY_FILE_MODE}" != "600 jupyter jupyter" ]]; then
     >&2 emit "ERROR: user SSH key file permissions are incorrect: ${SSH_DIR_MODE}/id_rsa"
     exit 1
@@ -931,7 +1003,8 @@ fi
 # GIT_IGNORE
 emit "--  Checking if gitignore is properly installed"
 
-readonly INSTALLED_GITIGNORE="$(${RUN_AS_LOGIN_USER} "git config --global core.excludesfile")"
+INSTALLED_GITIGNORE="$(${RUN_AS_LOGIN_USER} "git config --global core.excludesfile")"
+readonly INSTALLED_GITIGNORE
 
 if [[ "${INSTALLED_GITIGNORE}" != "${GIT_IGNORE}" ]]; then
   >&2 emit "ERROR: gitignore not set up at ${GIT_IGNORE}"
@@ -942,7 +1015,8 @@ emit "SUCCESS: Gitignore installed at ${INSTALLED_GITIGNORE}"
 
 # This block is for test only. If the notebook execute successfully down to
 # here, we knows that the script executed successfully.
-readonly WORKBENCH_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
+WORKBENCH_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
+readonly WORKBENCH_TEST_VALUE
 if [[ -n "${WORKBENCH_TEST_VALUE}" ]]; then
   ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${WORKBENCH_TEST_VALUE}"
 fi

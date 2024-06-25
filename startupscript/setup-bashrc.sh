@@ -18,6 +18,7 @@
 # - CLOUD: aws/gcp
 # - LOG_IN: whether the user is logged into the wb CLI as part of the script
 # - RUN_AS_LOGIN_USER: run command as non-root Unix user (ex: jupyter, dataproc)
+# - USER_WORKBENCH_CONFIG_DIR: user's WB configuration directory
 # 
 # This script must be run after install-cli.sh
 
@@ -25,15 +26,17 @@ emit "Customize user bashrc ..."
 
 if [[ "${LOG_IN}" == "true" ]]; then
   # OWNER_EMAIL is really the Workbench user account email address
-  readonly OWNER_EMAIL="$(
+  OWNER_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
     jq --raw-output ".userEmail")"
+  readonly OWNER_EMAIL
 
   # PET_SA_EMAIL is the pet service account for the Workbench user and
   # is specific to the GCP project backing the workspace
-  readonly PET_SA_EMAIL="$(
+  PET_SA_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
     jq --raw-output ".serviceAccountEmail")"
+  readonly PET_SA_EMAIL
 
   cat << EOF >> "${USER_BASHRC}"
 # Set up a few legacy Workbench-specific convenience variables
@@ -53,9 +56,10 @@ fi
 if [[ "${CLOUD}" == "gcp" && "${LOG_IN}" == "true" ]]; then
 
   # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
-  readonly GOOGLE_PROJECT="$(
+  GOOGLE_PROJECT="$(
     ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
     jq --raw-output ".googleProjectId")"
+  readonly GOOGLE_PROJECT
   
   emit "Adding Workbench GCP-sepcific environment variables to ~/.bashrc ..."
 
@@ -65,6 +69,25 @@ if [[ "${CLOUD}" == "gcp" && "${LOG_IN}" == "true" ]]; then
 export GOOGLE_PROJECT='${GOOGLE_PROJECT}'
 # Set up GCP specific convenience variables
 export GOOGLE_CLOUD_PROJECT='${GOOGLE_PROJECT}'
+EOF
+
+fi
+
+if [[ "${CLOUD}" == "aws" && "${LOG_IN}" == "true" ]]; then
+
+  # Create a symlink to this workspace's AWS config file to use as the target for AWS_CONFIG_FILE.
+  readonly AWS_CONFIG_SYMLINK="${USER_WORKBENCH_CONFIG_DIR}/workspace.conf"
+  ${RUN_AS_LOGIN_USER} "eval \$(wb workspace configure-aws) && \
+    ln -s \${AWS_CONFIG_FILE} ${AWS_CONFIG_SYMLINK}"
+
+  emit "Adding Workbench AWS-sepcific environment variables to ~/.bashrc ..."
+
+  cat << EOF >> "${USER_BASHRC}"
+
+# Set up AWS specific convenience variables
+export AWS_CONFIG_FILE='${AWS_CONFIG_SYMLINK}'
+export AWS_VAULT_BACKEND="file"
+export AWS_VAULT_FILE_PASSPHRASE=""
 EOF
 
 fi

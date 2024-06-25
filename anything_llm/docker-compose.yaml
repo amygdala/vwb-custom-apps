@@ -3,7 +3,7 @@ services:
   app:
     container_name: "application-server"
     hostname: app
-    image: "mintplexlabs/anythingllm:latest"
+    image: "gcr.io/terra-vdevel-cutting-date-7064/allm:v1"
     ports:
       - '3001:3001'
     cap_add:
@@ -15,11 +15,12 @@ services:
     restart: always
     environment:
     # Adjust for your environemnt
-      # - STORAGE_DIR=/app/server/storage
-      - STORAGE_DIR=/workspace/server/storage
+      - STORAGE_DIR=/app/server/storage
     volumes:
       - .:/workspace:cached
-      # - work:/app/server/storage:cached
+      - work:/app/work
 networks:
   app-network:
     external: true
+volumes:
+  work:

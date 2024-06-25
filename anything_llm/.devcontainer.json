@@ -4,8 +4,8 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  // "postCreateCommand": ["./startupscript/post-startup.sh", "anythingllm", "/app/server", "${templateOption:cloud}", "${templateOption:login}"],
+  "postCreateCommand": ["./startupscript/post-startup.sh", "anythingllm", "/app/server", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
-  // "postStartCommand":["./startupscript/remount-on-restart.sh", "anythingllm", "/app/server", "${templateOption:cloud}", "${templateOption:login}"],
+  "postStartCommand":["./startupscript/remount-on-restart.sh", "anythingllm", "/app/server", "${templateOption:cloud}", "${templateOption:login}"],
   "remoteUser": "root"
 }
